@@ -1,5 +1,0 @@
-torch--index-url https://pytorch.org
-transformers
-soundfile
-sentencepiece
-protobuf

@@ -2,15 +2,16 @@ import torch
 import streamlit as st
 import io
 import soundfile as sf
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+import transformers
+from transformers import AutoModelForSeq2SeqLM, pipeline
 
 # 1. Main Page Setup
 st.set_page_config(page_title="Runyankole AI App", layout="centered")
 st.title("🇺🇬 True Runyankole AI Translator")
-st.write("Powered by an open-access, cloud-stable translation engine.")
+st.write("Powered by an open-access, regional fine-tuned translation engine.")
 st.markdown("---")
 
-# 2. Public Local AI Model Pipelines (No Login Tokens Required)
+# 2. Public Local AI Model Pipelines
 @st.cache_resource
 def load_speech_models():
     """Loads OpenAI's lightweight public speech transcriber."""
@@ -18,12 +19,16 @@ def load_speech_models():
 
 @st.cache_resource
 def load_translation_engine():
-    """Loads Meta's public open-access translation engine."""
-    # Using Facebook's public 600M model which doesn't require a gated Hugging Face account login
-    model_name = "facebook/nllb-200-distilled-600M"
+    """
+    Loads Sunbird AI's specialized NLLB adaptation.
+    Uses dedicated NllbTokenizer and conditional generation classes
+    as required by the model's architectural custom vocabulary.
+    """
+    model_name = "Sunbird/translate-nllb-1.3b-salt"
     
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    # Use exact NllbTokenizer class to preserve index integrity
+    tokenizer = transformers.NllbTokenizer.from_pretrained(model_name)
+    model = transformers.M2M100ForConditionalGeneration.from_pretrained(model_name)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
@@ -37,38 +42,43 @@ except Exception as init_err:
     st.error(f"Failed to load public AI model weights: {init_err}")
     st.stop()
 
-# Meta NLLB explicit 4-digit script language country codes
-language_codes = {
-    'eng': 'eng_Latn',  # English
-    'nyn': 'nyn_Latn'   # Runyankole / Nyankole dialect script mapping
+# Sunbird SALT custom embedded language token numerical ID mappings
+language_tokens = {
+    'eng': 256047,  # English vocabulary register ID
+    'nyn': 256002   # Runyankole vocabulary register ID
 }
 
 def translate_via_neural_net(text, direction_mode):
     try:
         if direction_mode == "English to Runyankole":
-            src_lang = language_codes['eng']
-            tgt_lang = language_codes['nyn']
+            src_lang_token = language_tokens['eng']
+            tgt_lang_token = language_tokens['nyn']
         else:
-            src_lang = language_codes['nyn']
-            tgt_lang = language_codes['eng']
+            src_lang_token = language_tokens['nyn']
+            tgt_lang_token = language_tokens['eng']
 
-        # Tokenize text string into standard token sequences
+        # Tokenize text string into input sequences
         inputs = tokenizer(text, return_tensors="pt").to(device)
         
-        # Look up correct forced target language token identification ID
-        forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
+        # Explicitly overwrite the initial source sequence start identifier token index
+        inputs['input_ids'][0][0] = src_lang_token
 
-        # Generate translation sentences matching language constraints
+        # Generate translation matching regional language target boundaries
         translated_tokens = translation_model.generate(
             **inputs,
-            forced_bos_token_id=forced_bos_token_id,
+            forced_bos_token_id=tgt_lang_token,
             max_length=256,
-            num_beams=1,      # Greedy search decoding structure for rapid speed
+            num_beams=4,      # Increased for accurate contextual local phrasing
             do_sample=False
         )
 
         result = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
-        return result[0] if isinstance(result, list) and len(result) > 0 else "No output generated."
+        
+        # Extract individual text string elements safely from list return arrays
+        if isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return "No output generated."
+        
     except Exception as e:
         return f"Translation Processing Error: {str(e)}"
 

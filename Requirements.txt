@@ -1,6 +1,5 @@
-torch>=2.0.0
-transformers>=4.35.0
-streamlit>=1.28.0
-soundfile>=0.12.1
-sentencepiece>=0.1.99
-protobuf>=4.24.0
+torch--index-url https://pytorch.org
+transformers
+soundfile
+sentencepiece
+protobuf

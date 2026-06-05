@@ -57,18 +57,22 @@ def translate_via_neural_net(text, direction_mode):
             src_lang_token = language_tokens['nyn']
             tgt_lang_token = language_tokens['eng']
 
-        # Tokenize text string into input sequences
-        inputs = tokenizer(text, return_tensors="pt").to(device)
+        # 1. Tokenize text input
+        inputs = tokenizer(text, return_tensors="pt")
         
-        # Explicitly overwrite the initial source sequence start identifier token index
+        # 2. Safely push entire dictionary tensors to active device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        
+        # 3. Explicitly overwrite source sequence start identifier on the correct device
         inputs['input_ids'][0][0] = src_lang_token
 
-        # Generate translation matching regional language target boundaries
+        # 4. Generate translation with architecture-compatible decoder keys
         translated_tokens = translation_model.generate(
             **inputs,
             forced_bos_token_id=tgt_lang_token,
+            decoder_start_token_id=tgt_lang_token, # Prevents generation failure/loops
             max_length=256,
-            num_beams=4,      # Increased for accurate contextual local phrasing
+            num_beams=4,      # Kept for accurate contextual local phrasing
             do_sample=False
         )
 

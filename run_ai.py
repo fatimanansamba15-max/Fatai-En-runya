@@ -12,11 +12,10 @@ st.write("Powered by an open-access, regional fine-tuned translation engine.")
 st.markdown("---")
 
 # --- SECURE AUTHENTICATION CONFIGURATION ---
-# Safely pulls your Hugging Face key from your hidden environment configurations
 try:
     HF_ACCESS_TOKEN = st.secrets["HF_ACCESS_TOKEN"]
 except Exception:
-    st.error("❌ Missing HF_ACCESS_TOKEN! Please configure your secrets.toml file locally or add it to your Streamlit Cloud Dashboard dashboard setup.")
+    st.error("❌ Missing HF_ACCESS_TOKEN! Please configure your secrets.toml file locally or add it to your Streamlit Cloud Dashboard setup.")
     st.stop()
 # -------------------------------------------
 
@@ -34,7 +33,6 @@ def load_translation_engine():
     """
     model_name = "Sunbird/translate-nllb-1.3b-salt"
     
-    # Pass the secure token parameter directly into the model initializers
     tokenizer = transformers.NllbTokenizer.from_pretrained(
         model_name, 
         token=HF_ACCESS_TOKEN
@@ -56,29 +54,33 @@ except Exception as init_err:
     st.error(f"Failed to load public AI model weights: {init_err}")
     st.stop()
 
-# Sunbird SALT custom embedded language token numerical ID mappings
+# Sunbird SALT custom embedded language token string mappings
+# NLLB Tokenizers accept string keys natively to safely handle vocab adjustments
 language_tokens = {
-    'eng': 256047,  # English vocabulary register ID
-    'nyn': 256002   # Runyankole vocabulary register ID
+    'eng': 'eng_Latn',  
+    'nyn': 'nyn_Latn'   
 }
 
 def translate_via_neural_net(text, direction_mode):
     try:
         if direction_mode == "English to Runyankole":
-            src_lang_token = language_tokens['eng']
-            tgt_lang_token = language_tokens['nyn']
+            src_lang = language_tokens['eng']
+            tgt_lang_token_id = 256002  # Forced target token register ID for 'nyn'
         else:
-            src_lang_token = language_tokens['nyn']
-            tgt_lang_token = language_tokens['eng']
+            src_lang = language_tokens['nyn']
+            tgt_lang_token_id = 256047  # Forced target token register ID for 'eng'
 
+        # Set the tokenizer source language context correctly
+        tokenizer.src_lang = src_lang
+        
+        # Tokenize text safely without losing the input data array
         inputs = tokenizer(text, return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
-        inputs['input_ids'] = src_lang_token
 
+        # Generate output predictions using proper model tensors
         translated_tokens = translation_model.generate(
             **inputs,
-            forced_bos_token_id=tgt_lang_token,
-            decoder_start_token_id=tgt_lang_token,
+            forced_bos_token_id=tgt_lang_token_id,
             max_length=256,
             num_beams=4,      
             do_sample=False
@@ -88,7 +90,7 @@ def translate_via_neural_net(text, direction_mode):
         
         if isinstance(result, list) and len(result) > 0:
             return result[0]
-        return "No output generated."
+        return "No text output generated."
         
     except Exception as e:
         return f"Translation Processing Error: {str(e)}"
@@ -96,25 +98,40 @@ def translate_via_neural_net(text, direction_mode):
 # 3. Sidebar Selection Options
 direction = st.sidebar.selectbox("Flow Mode:", ["English to Runyankole", "Runyankole to English"])
 
-# 4. Handle Persistent Values
+# 4. Handle Persistent Values 
+# We track if a new voice transcription happened to alter text input defaults dynamically
 if "voice_text" not in st.session_state:
     st.session_state.voice_text = ""
+if "last_audio_bytes" not in st.session_state:
+    st.session_state.last_audio_bytes = None
 
 # Audio Recorder Layout Layer
 recorded_audio = st.audio_input("Record voice input")
+
 if recorded_audio is not None:
-    with st.spinner("Decoding speech audio variables..."):
-        try:
-            audio_data, sample_rate = sf.read(io.BytesIO(recorded_audio.read()))
-            if len(audio_data.shape) > 1:
-                audio_data = audio_data[:, 0]
-            result = asr_pipeline({"raw": audio_data, "sampling_rate": sample_rate})
-            st.session_state.voice_text = result["text"]
-        except Exception as e:
-            st.error(f"Audio Decode Error: {e}")
+    # Read raw audio bytes to check if it's genuinely a new recording event
+    current_audio_bytes = recorded_audio.getvalue()
+    if current_audio_bytes != st.session_state.last_audio_bytes:
+        st.session_state.last_audio_bytes = current_audio_bytes
+        
+        with st.spinner("Decoding speech audio variables..."):
+            try:
+                # Reset stream pointer and read file array
+                recorded_audio.seek(0)
+                audio_data, sample_rate = sf.read(io.BytesIO(current_audio_bytes))
+                
+                if len(audio_data.shape) > 1:
+                    audio_data = audio_data[:, 0]  # Standardize stereo down to mono channel
+                
+                result = asr_pipeline({"raw": audio_data, "sampling_rate": sample_rate})
+                st.session_state.voice_text = result["text"]
+                st.rerun()  # Forces dynamic text_input box value refreshment immediately
+            except Exception as e:
+                st.error(f"Audio Decode Error: {e}")
 
 # Form submission layout block
 with st.form("translation_form", clear_on_submit=False):
+    # Field automatically inherits text derived from either manual input typing or voice triggers
     sentence = st.text_input("Input Phrase:", value=st.session_state.voice_text)
     submit_button = st.form_submit_button(label="Translate Text", type="primary")
 

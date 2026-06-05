@@ -3,13 +3,22 @@ import streamlit as st
 import io
 import soundfile as sf
 import transformers
-from transformers import AutoModelForSeq2SeqLM, pipeline
+from transformers import pipeline
 
 # 1. Main Page Setup
 st.set_page_config(page_title="Runyankole AI App", layout="centered")
 st.title("🇺🇬 True Runyankole AI Translator")
 st.write("Powered by an open-access, regional fine-tuned translation engine.")
 st.markdown("---")
+
+# --- SECURE AUTHENTICATION CONFIGURATION ---
+# Safely pulls your Hugging Face key from your hidden environment configurations
+try:
+    HF_ACCESS_TOKEN = st.secrets["HF_ACCESS_TOKEN"]
+except Exception:
+    st.error("❌ Missing HF_ACCESS_TOKEN! Please configure your secrets.toml file locally or add it to your Streamlit Cloud Dashboard dashboard setup.")
+    st.stop()
+# -------------------------------------------
 
 # 2. Public Local AI Model Pipelines
 @st.cache_resource
@@ -20,15 +29,20 @@ def load_speech_models():
 @st.cache_resource
 def load_translation_engine():
     """
-    Loads Sunbird AI's specialized NLLB adaptation.
-    Uses dedicated NllbTokenizer and conditional generation classes
-    as required by the model's architectural custom vocabulary.
+    Loads Sunbird AI's specialized NLLB adaptation using an explicit 
+    authentication token securely extracted from Streamlit environment parameters.
     """
     model_name = "Sunbird/translate-nllb-1.3b-salt"
     
-    # Use exact NllbTokenizer class to preserve index integrity
-    tokenizer = transformers.NllbTokenizer.from_pretrained(model_name)
-    model = transformers.M2M100ForConditionalGeneration.from_pretrained(model_name)
+    # Pass the secure token parameter directly into the model initializers
+    tokenizer = transformers.NllbTokenizer.from_pretrained(
+        model_name, 
+        token=HF_ACCESS_TOKEN
+    )
+    model = transformers.M2M100ForConditionalGeneration.from_pretrained(
+        model_name, 
+        token=HF_ACCESS_TOKEN
+    )
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
@@ -57,28 +71,21 @@ def translate_via_neural_net(text, direction_mode):
             src_lang_token = language_tokens['nyn']
             tgt_lang_token = language_tokens['eng']
 
-        # 1. Tokenize text input
         inputs = tokenizer(text, return_tensors="pt")
-        
-        # 2. Safely push entire dictionary tensors to active device
         inputs = {k: v.to(device) for k, v in inputs.items()}
-        
-        # 3. Explicitly overwrite source sequence start identifier on the correct device
-        inputs['input_ids'][0][0] = src_lang_token
+        inputs['input_ids'] = src_lang_token
 
-        # 4. Generate translation with architecture-compatible decoder keys
         translated_tokens = translation_model.generate(
             **inputs,
             forced_bos_token_id=tgt_lang_token,
-            decoder_start_token_id=tgt_lang_token, # Prevents generation failure/loops
+            decoder_start_token_id=tgt_lang_token,
             max_length=256,
-            num_beams=4,      # Kept for accurate contextual local phrasing
+            num_beams=4,      
             do_sample=False
         )
 
         result = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
         
-        # Extract individual text string elements safely from list return arrays
         if isinstance(result, list) and len(result) > 0:
             return result[0]
         return "No output generated."
@@ -106,12 +113,11 @@ if recorded_audio is not None:
         except Exception as e:
             st.error(f"Audio Decode Error: {e}")
 
-# Form submission layout block to fix typing lag issues
+# Form submission layout block
 with st.form("translation_form", clear_on_submit=False):
     sentence = st.text_input("Input Phrase:", value=st.session_state.voice_text)
     submit_button = st.form_submit_button(label="Translate Text", type="primary")
 
-# Execute conversion algorithms exclusively on submission triggers
 if submit_button and sentence:
     with st.spinner("Processing Model Inference Tensors..."):
         output_translation = translate_via_neural_net(sentence, direction)

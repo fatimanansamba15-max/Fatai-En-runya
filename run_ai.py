@@ -21,7 +21,6 @@ def load_translation_engine():
     # Official NLLB Base Model (Supports Runyankole via nyn_Latn)
     model_name = "facebook/nllb-200-distilled-600M"
     
-    # Use native Auto classes for robust file management
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     
@@ -52,11 +51,9 @@ def translate_via_neural_net(text, direction_mode):
             src_lang = language_tokens['nyn']
             tgt_lang = language_tokens['eng']
 
-        # Clean approach: Set source language dynamically on the tokenizer instance
-        tokenizer.src_lang = src_lang
-
-        # Generate cleaner text embeddings naturally without manual tensor index hacking
-        inputs = tokenizer(text, return_tensors="pt").to(device)
+        # CRITICAL FIX: You MUST pass src_lang inside the tokenizer call!
+        # This tells the tokenizer to physically attach the source language tag onto the input tensors.
+        inputs = tokenizer(text, return_tensors="pt", src_lang=src_lang).to(device)
 
         # Retrieve the destination token ID safely from the model vocabulary
         forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)

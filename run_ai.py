@@ -19,7 +19,7 @@ def load_speech_models():
 
 @st.cache_resource
 def load_translation_engine():
-    # FIXED: Corrected case-sensitivity naming syntax to match the exact official Hugging Face ID
+    # Corrected official Hugging Face ID
     model_name = "facebook/nllb-200-distilled-600M"
     
     # Use explicit NllbTokenizer to properly handle specialized African target tokens
@@ -57,8 +57,8 @@ def translate_via_neural_net(text, direction_mode):
         # Tokenize sequence into tensors and push to active device matrix
         inputs = tokenizer(text, return_tensors="pt").to(device)
 
-        # Map the exact vocabulary index integer target directly from lang_code_to_id dict
-        forced_bos_token_id = tokenizer.lang_code_to_id[tgt_lang]
+        # CRITICAL FIX: Use the standard convert_tokens_to_ids function supported by NllbTokenizer
+        forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
 
         # Generate translation using forced target language sequence parameters
         translated_tokens = translation_model.generate(

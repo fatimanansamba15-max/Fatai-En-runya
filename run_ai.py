@@ -40,7 +40,6 @@ language_tokens = {
     'nyn': 'nyn_Latn'
 }
 
-
 def translate_via_neural_net(text, direction_mode):
     try:
         # Determine correct source and destination codes based on selection
@@ -51,14 +50,13 @@ def translate_via_neural_net(text, direction_mode):
             src_lang = language_tokens['nyn']
             tgt_lang = language_tokens['eng']
 
-        # CRITICAL FIX: You MUST pass src_lang inside the tokenizer call!
-        # This tells the tokenizer to physically attach the source language tag onto the input tensors.
+        # Pass src_lang inside the tokenizer call so it physically builds the tensor prefix
         inputs = tokenizer(text, return_tensors="pt", src_lang=src_lang).to(device)
 
         # Retrieve the destination token ID safely from the model vocabulary
         forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
 
-        # Execute accelerated generation pass
+        # Execute generation pass with the forced target language token identifier
         translated_tokens = translation_model.generate(
             **inputs,
             forced_bos_token_id=forced_bos_token_id,

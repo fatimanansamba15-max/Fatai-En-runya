@@ -20,8 +20,8 @@ def load_speech_models():
 @st.cache_resource
 def load_translation_engine():
     # Official Sunbird AI Model Repository
-    model_name = "Sunbird/translate-nllb-1.3b-salt"
-    tokenizer = NllbTokenizer.from_pretrained(model_name)
+    model_name = "facebook/nllb-200-distilled-600M"
+tokenizer = NllbTokenizer.from_pretrained(model_name)
     model = M2M100ForConditionalGeneration.from_pretrained(model_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)

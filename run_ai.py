@@ -18,10 +18,10 @@ def load_speech_models():
 
 @st.cache_resource
 def load_translation_engine():
-    # Official Sunbird AI Model Repository / NLLB Base
+    # Official NLLB Base Model (Supports Runyankole via nyn_Latn)
     model_name = "facebook/nllb-200-distilled-600M"
     
-    # Correctly loading the tokenizer and NLLB matching sequence model
+    # Use native Auto classes for robust file management
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     
@@ -31,38 +31,49 @@ def load_translation_engine():
     return tokenizer, model, device
 
 
-# Initialize Tensors
+# Initialize Neural Components
 asr_pipeline = load_speech_models()
 tokenizer, translation_model, device = load_translation_engine()
 
-# Map language ids according to official SALT documentation rules
-language_tokens = {'eng': 256047, 'nyn': 256002}
+# Map language ids using standard NLLB BCP-47 string identifiers 
+language_tokens = {
+    'eng': 'eng_Latn', 
+    'nyn': 'nyn_Latn'
+}
 
 
 def translate_via_neural_net(text, direction_mode):
     try:
+        # Determine correct source and destination codes based on selection
         if direction_mode == "English to Runyankole":
-            src_lang, tgt_token = 'eng', language_tokens['nyn']
+            src_lang = language_tokens['eng']
+            tgt_lang = language_tokens['nyn']
         else:
-            src_lang, tgt_token = 'nyn', language_tokens['eng']
+            src_lang = language_tokens['nyn']
+            tgt_lang = language_tokens['eng']
 
-        # Convert text input directly to a tensor matrix grid
+        # Clean approach: Set source language dynamically on the tokenizer instance
+        tokenizer.src_lang = src_lang
+
+        # Generate cleaner text embeddings naturally without manual tensor index hacking
         inputs = tokenizer(text, return_tensors="pt").to(device)
 
-        # Modify ONLY the first column entry of the tensor matrix, keeping the rest of your text intact
-        inputs['input_ids'][:, 0] = language_tokens[src_lang]
+        # Retrieve the destination token ID safely from the model vocabulary
+        forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
 
-        # SPEED ACCELERATOR: Added generation constraints to bypass slow calculations
+        # Execute accelerated generation pass
         translated_tokens = translation_model.generate(
             **inputs,
-            forced_bos_token_id=tgt_token,
+            forced_bos_token_id=forced_bos_token_id,
             max_length=256,
             num_beams=1,      # Forces Greedy Search for instant text processing
             do_sample=False   # Disables sampling overhead latency
         )
 
+        # Parse final token response sequence back to raw string characters
         result = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
         return result[0] if isinstance(result, list) and len(result) > 0 else "No output generated."
+        
     except Exception as e:
         return f"Translation Error Matrix Trace: {str(e)}"
 
@@ -87,7 +98,7 @@ if recorded_audio is not None:
         except Exception as e:
             st.error(f"Audio Decode Error: {e}")
 
-# BROWSER LAG FIX: Streamlit Form Layout Block
+# Streamlit Form Layout Block to avoid lag
 with st.form("translation_form", clear_on_submit=False):
     sentence = st.text_input("Input Phrase:", value=st.session_state.voice_text)
     submit_button = st.form_submit_button(label="Translate Text", type="primary")

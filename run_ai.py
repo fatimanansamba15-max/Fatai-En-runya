@@ -21,7 +21,11 @@ def load_speech_models():
 def load_translation_engine():
     # Official Sunbird AI Model Repository
     model_name = "facebook/nllb-200-distilled-600M"
-tokenizer = NllbTokenizer.from_pretrained(model_name)
+def load_translation_engine():
+    # Line 24 (Make sure your tokenizer line is here)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    
+    # Line 25 (Make sure this has the EXACT same number of leading spaces as line 24!)
     model = M2M100ForConditionalGeneration.from_pretrained(model_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)

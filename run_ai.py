@@ -1,10 +1,8 @@
-from transformers import AutoTokenizer, M2M100ForConditionalGeneration
-import torch
 import streamlit as st
+import torch
 import io
 import soundfile as sf
-import transformers
-from transformers import pipeline, NllbTokenizer, M2M100ForConditionalGeneration
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 
 # 1. Main Page Setup
 st.set_page_config(page_title="Runyankole Neural App", layout="centered")
@@ -20,16 +18,16 @@ def load_speech_models():
 
 @st.cache_resource
 def load_translation_engine():
-    # Official Sunbird AI Model Repository
+    # Official Sunbird AI Model Repository / NLLB Base
     model_name = "facebook/nllb-200-distilled-600M"
-def load_translation_engine():
-    # Line 24 (Make sure your tokenizer line is here)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # Line 25 (Make sure this has the EXACT same number of leading spaces as line 24!)
-    model = M2M100ForConditionalGeneration.from_pretrained(model_name)
+    # Correctly loading the tokenizer and NLLB matching sequence model
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
+    
     return tokenizer, model, device
 
 
@@ -51,7 +49,7 @@ def translate_via_neural_net(text, direction_mode):
         # Convert text input directly to a tensor matrix grid
         inputs = tokenizer(text, return_tensors="pt").to(device)
 
-        # FIX: Modify ONLY the first column entry of the tensor matrix, keeping the rest of your text intact
+        # Modify ONLY the first column entry of the tensor matrix, keeping the rest of your text intact
         inputs['input_ids'][:, 0] = language_tokens[src_lang]
 
         # SPEED ACCELERATOR: Added generation constraints to bypass slow calculations

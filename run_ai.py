@@ -1,3 +1,4 @@
+from transformers import AutoTokenizer, M2M100ForConditionalGeneration
 import torch
 import streamlit as st
 import io

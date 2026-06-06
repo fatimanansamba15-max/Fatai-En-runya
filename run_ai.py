@@ -42,7 +42,6 @@ language_tokens = {
 
 def translate_via_neural_net(text, direction_mode):
     try:
-        # Determine correct source and destination codes based on selection
         if direction_mode == "English to Runyankole":
             src_lang = language_tokens['eng']
             tgt_lang = language_tokens['nyn']
@@ -50,23 +49,20 @@ def translate_via_neural_net(text, direction_mode):
             src_lang = language_tokens['nyn']
             tgt_lang = language_tokens['eng']
 
-        # Pass src_lang inside the tokenizer call so it physically builds the tensor prefix
         inputs = tokenizer(text, return_tensors="pt", src_lang=src_lang).to(device)
-
-        # Retrieve the destination token ID safely from the model vocabulary
         forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
 
-        # Execute generation pass with the forced target language token identifier
         translated_tokens = translation_model.generate(
             **inputs,
             forced_bos_token_id=forced_bos_token_id,
             max_length=256,
-            num_beams=1,      # Forces Greedy Search for instant text processing
-            do_sample=False   # Disables sampling overhead latency
+            num_beams=1,      
+            do_sample=False   
         )
 
-        # Parse final token response sequence back to raw string characters
         result = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
+        
+        # FIX: Explicitly pull index 0 to return a clean string, not a list object
         return result[0] if isinstance(result, list) and len(result) > 0 else "No output generated."
         
     except Exception as e:

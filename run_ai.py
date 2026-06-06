@@ -89,16 +89,16 @@ if recorded_audio is not None:
             if len(audio_data.shape) > 1:
                 audio_data = audio_data[:, 0]
             result = asr_pipeline({"raw": audio_data, "sampling_rate": sample_rate})
+            # Directly updates the text field because of the key binding
             st.session_state.voice_text = result["text"]
         except Exception as e:
             st.error(f"Audio Decode Error: {e}")
 
-# Streamlit Form Layout Block to avoid lag
-with st.form("translation_form", clear_on_submit=False):
-    sentence = st.text_input("Input Phrase:", value=st.session_state.voice_text)
-    submit_button = st.form_submit_button(label="Translate Text", type="primary")
+# Layout without form block to allow instant component interaction
+sentence = st.text_input("Input Phrase:", key="voice_text")
+submit_button = st.button(label="Translate Text", type="primary")
 
-# Execute translation ONLY when the user clicks the submit button
+# Execute translation on the first click
 if submit_button and sentence:
     with st.spinner("Running Neural Net Inference..."):
         output_translation = translate_via_neural_net(sentence, direction)

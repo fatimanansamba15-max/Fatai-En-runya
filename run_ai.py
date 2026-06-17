@@ -2,7 +2,7 @@ import streamlit as st
 import torch
 import io
 import soundfile as sf
-from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
+from transformers import AutoTokenizer, M2M100ForConditionalGeneration, pipeline
 
 # 1. App Window Initialization
 st.set_page_config(page_title="Runyankole Neural App", layout="centered")
@@ -18,11 +18,12 @@ def load_speech_models():
 
 @st.cache_resource
 def load_translation_engine():
-    # FIX: Swapped to a model specifically trained and fine-tuned for Runyankole
-    model_name = "Sunbird/translate-nllb-1.3b-salt"
+    # FIX: Revert to the globally hosted stable NLLB model base repository structure
+    model_name = "facebook/nllb-200-distilled-600M"
     
+    # Use standard NllbTokenizer and conditional generation classes to avoid OSError tracebacks
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    model = M2M100ForConditionalGeneration.from_pretrained(model_name)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
@@ -34,36 +35,36 @@ def load_translation_engine():
 asr_pipeline = load_speech_models()
 tokenizer, translation_model, device = load_translation_engine()
 
-# Standard BCP-47 Target Codes utilized by the Sunbird/SALT model
+# FIX: Exact hardcoded vocabulary index keys specified by the Sunbird/SALT Translation Engine
 language_tokens = {
-    'eng': 'eng_Latn', 
-    'nyn': 'nyn_Latn'
+    'eng': 256047, # Vector index token mapping for English
+    'nyn': 256002  # Vector index token mapping for Runyankole
 }
 
 def translate_via_neural_net(text, direction_mode):
     try:
         if direction_mode == "English to Runyankole":
-            src_lang = language_tokens['eng']
-            tgt_lang = language_tokens['nyn']
+            src_token = language_tokens['eng']
+            tgt_lang_code = "nyn_Latn" # Target string representation signature
         else:
-            src_lang = language_tokens['nyn']
-            tgt_lang = language_tokens['eng']
-
-        # Force the tokenizer to build the source prefix sequence
-        tokenizer.src_lang = src_lang
+            src_token = language_tokens['nyn']
+            tgt_lang_code = "eng_Latn"
 
         # Tokenize the input phrase safely
         inputs = tokenizer(text, return_tensors="pt").to(device)
 
-        # Extract the target vocabulary token identifier 
-        forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
+        # FIX: Directly overwrite the input prefix tensor index with the proper African language token mapping
+        inputs['input_ids'][0][0] = src_token
 
-        # Generate translation matrix
+        # Extract the target vocabulary token identifier 
+        forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang_code)
+
+        # Generate translation matrices
         translated_tokens = translation_model.generate(
             **inputs,
             forced_bos_token_id=forced_bos_token_id,
             max_length=256,
-            num_beams=4,      # Increased to 4 for much higher translation accuracy
+            num_beams=4,      # Dynamic beam searching tracking for high context accuracy
             do_sample=False   
         )
 

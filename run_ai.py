@@ -20,7 +20,7 @@ def load_speech_models():
 def load_translation_engine():
     model_name = "facebook/nllb-200-distilled-600M"
     
-    # Use standard AutoTokenizer to map to modern text-generation pipelines
+    # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     
@@ -49,13 +49,16 @@ def translate_via_neural_net(text, direction_mode):
             src_lang = language_tokens['nyn']
             tgt_lang = language_tokens['eng']
 
-        # 1. Force the tokenizer to build the source prefix sequence
-        inputs = tokenizer(text, return_tensors="pt", src_lang=src_lang).to(device)
+        # FIX: Explicitly assign the source language token directly to the tokenizer instance
+        tokenizer.src_lang = src_lang
 
-        # 2. Extract the target vocabulary token identifier 
+        # Tokenize the input phrase safely
+        inputs = tokenizer(text, return_tensors="pt").to(device)
+
+        # Extract the target vocabulary token identifier 
         forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
 
-        # 3. Generate translation matrix passing explicit structural arguments
+        # Generate translation matrix passing explicit structural arguments
         translated_tokens = translation_model.generate(
             **inputs,
             forced_bos_token_id=forced_bos_token_id,
@@ -64,7 +67,7 @@ def translate_via_neural_net(text, direction_mode):
             do_sample=False   
         )
 
-        # 4. Safely pull index 0 to return a clean string instead of a raw list object
+        # Safely pull index 0 to return a clean string
         result = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
         if isinstance(result, list) and len(result) > 0:
             return result[0]
@@ -77,23 +80,36 @@ def translate_via_neural_net(text, direction_mode):
 # 3. Mode Configuration UI
 direction = st.sidebar.selectbox("Flow Mode:", ["English to Runyankole", "Runyankole to English"])
 
-# Initialize memory space for voice text inputs
+# Initialize session state tracking spaces
 if "voice_text" not in st.session_state:
-    st.session_state.voice_text = ""
+    st.session_state.voice_text = "Ninkukunda munonga"
+if "last_processed_audio" not in st.session_state:
+    st.session_state.last_processed_audio = None
 
 # 4. Audio Processing Workflow Block
 recorded_audio = st.audio_input("Record voice input")
-if recorded_audio is not None:
+
+# FIX: Only run transcription if the audio object is completely new to prevent infinite re-inference
+if recorded_audio is not None and recorded_audio != st.session_state.last_processed_audio:
     with st.spinner("Processing speech audio layer..."):
         try:
-            audio_data, sample_rate = sf.read(io.BytesIO(recorded_audio.read()))
+            audio_bytes = recorded_audio.read()
+            audio_data, sample_rate = sf.read(io.BytesIO(audio_bytes))
             if len(audio_data.shape) > 1:
                 audio_data = audio_data[:, 0]
             
             result = asr_pipeline({"raw": audio_data, "sampling_rate": sample_rate})
+            
+            # Dynamically push result directly into session state and mark audio as processed
             st.session_state.voice_text = result["text"]
+            st.session_state.last_processed_audio = recorded_audio
+            st.rerun() # Refresh layout to seamlessly update text input box
         except Exception as e:
             st.error(f"Audio Decode Error: {e}")
+
+# Reset tracker if user deletes/clears the audio recorder
+if recorded_audio is None:
+    st.session_state.last_processed_audio = None
 
 # 5. Direct State Binding Layout
 sentence = st.text_input("Input Phrase:", key="voice_text")
